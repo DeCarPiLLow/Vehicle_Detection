@@ -5,5 +5,4 @@ You may also notice that the vehicles will initially be detected and the counter
 # How To run the program:
 Install the yolo-coco v3 source file in the same folder with model.py
 
-## cd yolo-coco
-## wget https://pjreddie.com/media/files/yolov3.weights
+wget https://pjreddie.com/media/files/yolov3.weights
