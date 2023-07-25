@@ -3,7 +3,7 @@ import numpy as np
 import time
 from collections import defaultdict
 
-vid = cv2.VideoCapture("bridge.mp4")
+vid = cv2.VideoCapture("bridge1.mp4")
 
 path_label = "coco.names"
 
@@ -30,11 +30,23 @@ result = cv2.VideoWriter(output_filename, fourcc, fps, frame_size)
 
 temp_Id = []
 
+tracker = cv2.TrackerMIL_create()
+object_trackers = {}
+prev_bounding_boxes = {}
+
+# Counter to control the frequency of detection
+detection_counter = 0
+detection_interval = 10  # Number of frames before re-detection, adjust this value as needed
+
+
 def findObject(outputs, img):
     heightTar, weightTar, channelsTar = img.shape
     bbox = []
     classIds = []
     confidences = []
+    global object_trackers, detection_counter  # Declare variables as global within the function
+
+    detection_counter += 1
     
     for output in outputs:
         for det in output:
@@ -71,8 +83,8 @@ def findObject(outputs, img):
                     elif classId == 7:
                         class_counts['class8'] += 1
 
-    temp_Id = classIds
     draw_box = cv2.dnn.NMSBoxes(bbox, confidences, confThreshold, nmsThreshold)
+
     if draw_box is not None and len(draw_box) > 0:
         for i in draw_box:
             index = i  # Use 'i' directly as the index
@@ -87,7 +99,37 @@ def findObject(outputs, img):
             cv2.line(img, (180, 186), (267, 186), (0, 255, 0, 1))
             cv2.line(img, (180, 186), (267, 186), (0, 255, 0, 1))
 
+            xMid, yMid = int((x + (x + w)) / 2), int((y + (y + h)) / 2)
+            box_center = (xMid, yMid)
+
+            if box_center in object_trackers:
+                tracker = object_trackers[box_center]
+                
+                if detection_counter % detection_interval == 0:
+                    # Run detection on every nth frame
+                    object_trackers.pop(box_center)
+                    detection_counter = 0
+                else:
+                    success, box = tracker.update(img)
+                    if success:
+                        x, y, w, h = [int(v) for v in box]
+                        xMid, yMid = int((x + (x + w)) / 2), int((y + (y + h)) / 2)
+                        box_center = (xMid, yMid)
+                    else:
+                        # If tracking fails, remove the object from object_trackers
+                        object_trackers.pop(box_center)
+            else:
+                # Create a new tracker for the object
+                classId = classIds[index]
+                class_name = classes[classId].upper()
+                class_counts[class_name] += 1
+
+                tracker = cv2.TrackerMIL_create()
+                tracker.init(img, (x, y, w, h))
+                object_trackers[box_center] = tracker
+
     return class_counts
+
 
 def main():
     starting_time = time.time()
@@ -111,9 +153,12 @@ def main():
         outputnames = [layernames[i - 1] for i in net.getUnconnectedOutLayers()]
         outputs = net.forward(outputnames)
         class_counts = findObject(outputs, img)  # Remove class_counts from arguments
-
         result.write(img)
 
+    print("Object Counts:")
+    for class_name, count in class_counts.items():
+        print(f"{class_name}: {count}")
+        
     vid.release()
     result.release()
     cv2.destroyAllWindows()
