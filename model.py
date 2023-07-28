@@ -145,29 +145,7 @@ def count_objects_in_frame(outputs, classes):
 
     return class_counts
 
-def get_frame_details_at_time(video_path, time_in_seconds):
-    vid = cv2.VideoCapture(video_path)
-    fps = vid.get(cv2.CAP_PROP_FPS)
-    frame_number = int(time_in_seconds * fps)
-    vid.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
 
-    ret, frame = vid.read()
-    if not ret:
-        print("Invalid time or video file.")
-        vid.release()
-        return None, None, None
-    
-
-    frame = cv2.resize(frame, (weight_height_target, weight_height_target))
-    blob = cv2.dnn.blobFromImage(frame, 1/255, (weight_height_target, weight_height_target))
-    net.setInput(blob)
-    layernames = net.getLayerNames()
-    outputnames = [layernames[i - 1] for i in net.getUnconnectedOutLayers()]
-    outputs = net.forward(outputnames)
-    class_counts = count_objects_in_frame(outputs, classes)
-
-    vid.release()
-    return class_counts, frame, frame_number
 
 
 def main():
@@ -212,18 +190,6 @@ def main():
 
         result.write(img)
 
-        # Get frame details at the specified time
-        if frame_number == frame_time_in_seconds * fps:
-            frame_counts_at_time, frame_img = get_frame_details_at_time("bridge1.mp4", frame_time_in_seconds)
-            if frame_counts_at_time is not None:
-                print(f"\nObject Counts at {frame_time_in_seconds} seconds (Frame {frame_number}):", end=" ")
-                for class_name, count in frame_counts_at_time.items():
-                    print(f"{class_name}: {count}", end=" | ")
-
-                # Display the frame image (you can use OpenCV imshow or any other image viewer)
-                cv2.imshow("Frame at 5 seconds", frame_img)
-                cv2.waitKey(0)
-                cv2.destroyAllWindows()
 
     print("\nOverall Object Counts:")
     for class_name, count in class_counts.items():
