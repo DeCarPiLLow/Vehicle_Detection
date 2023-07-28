@@ -130,6 +130,45 @@ def findObject(outputs, img):
 
     return class_counts
 
+def count_objects_in_frame(outputs, classes):
+    class_counts = defaultdict(int)
+
+    for output in outputs:
+        for det in output:
+            scores = det[5:14]
+            classId = np.argmax(scores)
+            confidence = scores[classId]
+
+            if classId in [2, 3, 5, 7] and confidence > confThreshold:
+                class_name = classes[classId].upper()
+                class_counts[class_name] += 1
+
+    return class_counts
+
+def get_frame_details_at_time(video_path, time_in_seconds):
+    vid = cv2.VideoCapture(video_path)
+    fps = vid.get(cv2.CAP_PROP_FPS)
+    frame_number = int(time_in_seconds * fps)
+    vid.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+
+    ret, frame = vid.read()
+    if not ret:
+        print("Invalid time or video file.")
+        vid.release()
+        return None, None, None
+    
+
+    frame = cv2.resize(frame, (weight_height_target, weight_height_target))
+    blob = cv2.dnn.blobFromImage(frame, 1/255, (weight_height_target, weight_height_target))
+    net.setInput(blob)
+    layernames = net.getLayerNames()
+    outputnames = [layernames[i - 1] for i in net.getUnconnectedOutLayers()]
+    outputs = net.forward(outputnames)
+    class_counts = count_objects_in_frame(outputs, classes)
+
+    vid.release()
+    return class_counts, frame, frame_number
+
 
 def main():
     starting_time = time.time()
@@ -140,32 +179,63 @@ def main():
 
     print("Video Length:", video_length_seconds, "seconds")
 
+    frame_time_in_seconds = 5  # Specify the time in seconds to get frame details
+
     class_counts = defaultdict(int)
+
+    frame_number = 0  # Track the current frame number
 
     while True:
         ret, img = vid.read()
         if not ret:
             break
+        frame_number += 1  # Increment the frame number for each frame processed
+
         img = cv2.resize(img, (weight_height_target, weight_height_target))
         blob = cv2.dnn.blobFromImage(img, 1/255, (weight_height_target, weight_height_target))
         net.setInput(blob)
         layernames = net.getLayerNames()
         outputnames = [layernames[i - 1] for i in net.getUnconnectedOutLayers()]
         outputs = net.forward(outputnames)
-        class_counts = findObject(outputs, img)  # Remove class_counts from arguments
+
+        # Count objects in each frame
+        frame_counts = count_objects_in_frame(outputs, classes)
+
+        # Print object counts for each frame on a single line
+        print(f"\nFrame {frame_number} - Object Counts:", end=" ")
+        for class_name, count in frame_counts.items():
+            print(f"{class_name}: {count}", end=" |")
+
+        # Update the overall object counts
+        for class_name, count in frame_counts.items():
+            class_counts[class_name] += count
+
         result.write(img)
 
-    print("Object Counts:")
+        # Get frame details at the specified time
+        if frame_number == frame_time_in_seconds * fps:
+            frame_counts_at_time, frame_img = get_frame_details_at_time("bridge1.mp4", frame_time_in_seconds)
+            if frame_counts_at_time is not None:
+                print(f"\nObject Counts at {frame_time_in_seconds} seconds (Frame {frame_number}):", end=" ")
+                for class_name, count in frame_counts_at_time.items():
+                    print(f"{class_name}: {count}", end=" | ")
+
+                # Display the frame image (you can use OpenCV imshow or any other image viewer)
+                cv2.imshow("Frame at 5 seconds", frame_img)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
+
+    print("\nOverall Object Counts:")
     for class_name, count in class_counts.items():
-        print(f"{class_name}: {count}")
-        
+        print(f"{class_name}: {count}", end=" | ")
+
     vid.release()
     result.release()
     cv2.destroyAllWindows()
 
     end_time = time.time()
     processing_time = end_time - starting_time
-    print("Total Time Spent:", processing_time, "seconds")
+    print("\nTotal Time Spent:", processing_time, "seconds")
 
 if __name__ == "__main__":
     main()
